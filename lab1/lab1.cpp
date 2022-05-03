@@ -140,9 +140,10 @@ int* gpu_new_generation(int* board, int size)
             }
         }
     );
+    output.synchronize();
+
     delete[] board;
     setup_hidden(temp_board, size);
-
 
     return temp_board;
 }
@@ -179,6 +180,7 @@ int* optimized_gpu_new_generation(int* board, int size)
             output(idx[0] + 1, idx[1] + 1) = rules_in(alive, neighbours);
         }
     );
+    output.synchronize();
 
     delete[] board;
     setup_hidden(temp_board, size);
@@ -218,6 +220,8 @@ int* const_gpu_new_generation(int* board, int size)
             output(idx[0] + 1, idx[1] + 1) = rules[alive][neighbours];
         }
     );
+    output.synchronize();
+
     delete[] board;
     setup_hidden(temp_board, size);
 
@@ -265,6 +269,8 @@ int* tile_gpu_new_generation(int* board, int size)
             output(idx.global[0] + 1, idx.global[1] + 1) = tileData[alive][neighbours];
         }
     );
+    output.synchronize();
+
     delete[] board;
     setup_hidden(temp_board, size);
 
@@ -294,7 +300,7 @@ double tr_1(int* life, int size) {
 double tr2(int* life, int size) {
     Timer t;
     int* input = new int[(size + 2) * (size + 2)];
-    memcpy(input, life, (size + 2) * (size + 2));
+    copy(life, life + (size + 2) * (size + 2), input);
 
     for (int i = 0; i < 2; i++) {
         t.Start();
@@ -310,7 +316,7 @@ double tr2(int* life, int size) {
 double tr3(int* life, int size) {
     Timer t;
     int* input = new int[(size + 2) * (size + 2)];
-    memcpy(input, life, (size + 2) * (size + 2));
+    copy(life, life + (size + 2) * (size + 2), input);
 
     for (int i = 0; i < 2; i++) {
         t.Start();
@@ -326,7 +332,7 @@ double tr3(int* life, int size) {
 double tr4(int* life, int size) {
     Timer t;
     int* input = new int[(size + 2) * (size + 2)];
-    memcpy(input, life, (size + 2) * (size + 2));
+    copy(life, life + (size + 2) * (size + 2), input);
 
     for (int i = 0; i < 2; i++) {
         t.Start();
@@ -342,7 +348,7 @@ double tr4(int* life, int size) {
 double tr5(int* life, int size) {
     Timer t;
     int* input = new int[(size + 2) * (size + 2)];
-    memcpy(input, life, (size + 2) * (size + 2));
+    copy(life, life + (size + 2) * (size + 2), input);
 
     for (int i = 0; i < 2; i++) {
         t.Start();
@@ -368,6 +374,7 @@ int main()
     {
         int size = sizes[i];
         int* life = new int[(size + 2) * (size + 2)];
+
         fill(life, life + (size + 2) * (size + 2), 0);
 
         for (int i = 1; i < size + 1; i++) {
