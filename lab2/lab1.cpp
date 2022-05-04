@@ -19,7 +19,7 @@ using namespace concurrency::graphics;
 // Tr.
 
 
-void display_board(double* board, int size)
+void display_board(float* board, int size)
 {
     for (int i = 0; i < size + 2; i++)
     {
@@ -47,13 +47,14 @@ float* serial_new_generation(float* board, int size, float* warmers, int warmers
         for (int j = 1; j < size + 1; j++)
         {
             int idx = (i * offset_size) + j;
+            float num_k = 4;
 
             neighbours = board[(i - 1) * offset_size + j];
             neighbours += board[i * offset_size + (j - 1)];
             neighbours += board[i * offset_size + (j + 1)];
             neighbours += board[(i + 1) * offset_size + j];
 
-            temp_board[idx] = board[idx] + k * (neighbours - 4.0 * board[idx]);
+            temp_board[idx] = board[idx] + k * (neighbours - num_k * board[idx]);
         }
     }
 
@@ -74,7 +75,6 @@ float* gpu_new_generation(float* board, int size, float* warmers, int warmers_co
 {
     int offset_size = size + 2;
     int full_size = offset_size * offset_size;
-    float num_k = 4;
     float* temp_board = new float[full_size];
     fill(temp_board, temp_board + full_size, 0);
 
@@ -87,30 +87,27 @@ float* gpu_new_generation(float* board, int size, float* warmers, int warmers_co
     parallel_for_each(write, [=](index<2> idx) restrict(amp)
         {
             float neighbours = 0;
+            float num_k = 4;
 
             neighbours += input(idx[0], idx[1] + 1);
             neighbours += input(idx[0] + 1, idx[1]);
             neighbours += input(idx[0] + 1, idx[1] + 2);
             neighbours += input(idx[0] + 2, idx[1] + 1);
+            float value = input(idx[0] + 1, idx[1] + 1);
 
-            output(idx[0] + 1, idx[1] + 1) = input(idx[0] + 1, idx[1] + 1) + k * (neighbours - num_k * input(idx[0] + 1, idx[1] + 1));
-        }
-    );
-
-    array_view<const float, 1> input_warmers(warmers_count * 3, warmers);
-    concurrency::extent<1> warm(warmers_count);
-
-    parallel_for_each(warm, [=](index<1> idx) restrict(amp)
-        {
-            int x = input_warmers[idx[0] * 3];
-            int y = input_warmers[idx[0] * 3 + 1];
-            float value = input_warmers[idx[0] * 3 + 2];
-
-            output(y, x) = value;
+            output(idx[0] + 1, idx[1] + 1) = value + k * (neighbours - num_k * value);
         }
     );
 
     output.synchronize();
+
+    for (int i = 0; i < warmers_count; i++) {
+        int x = warmers[i * 3];
+        int y = warmers[i * 3 + 1];
+        float value = warmers[i * 3 + 2];
+
+        temp_board[y * (size + 2) + x] = value;
+    }
 
     delete[] board;
 
@@ -121,45 +118,40 @@ float* texture_new_generation(float* board, int size, float* warmers, int warmer
 {
     int offset_size = size + 2;
     int full_size = offset_size * offset_size;
-    float num_k = 4;
     float* temp_board = new float[full_size];
     fill(temp_board, temp_board + full_size, 0);
 
     texture<float, 2> input_texture(offset_size, offset_size, board, board + full_size);
     texture_view<const float, 2> input(input_texture);
-
-    texture<float, 2> output(offset_size, offset_size, temp_board, temp_board + full_size);
+    array_view<float, 2> output(offset_size, offset_size, temp_board);
+    output.discard_data();
 
     concurrency::extent<2> write(size, size);
 
-    parallel_for_each(write, [=, &output](index<2> idx) restrict(amp)
+    parallel_for_each(write, [=](index<2> idx) restrict(amp)
         {
             float neighbours = 0;
+            float num_k = 4;
 
             neighbours += input(idx[0], idx[1] + 1);
             neighbours += input(idx[0] + 1, idx[1]);
             neighbours += input(idx[0] + 1, idx[1] + 2);
             neighbours += input(idx[0] + 2, idx[1] + 1);
-            const auto out_idx(index<2>(idx[0] + 1, idx[1] + 1));
+            float value = input(idx[0] + 1, idx[1] + 1);
 
-            output.set(out_idx, input(idx[0] + 1, idx[1] + 1) + k * (neighbours - num_k * input(idx[0] + 1, idx[1] + 1)));
+            output(idx[0] + 1, idx[1] + 1) = value + k * (neighbours - num_k * value);
         }
     );
 
-    array_view<const float, 1> input_warmers(warmers_count * 3, warmers);
-    concurrency::extent<1> warm(warmers_count);
+    output.synchronize();
 
-    parallel_for_each(warm, [=, &output](index<1> idx) restrict(amp)
-        {
-            int x = input_warmers[idx[0] * 3];
-            int y = input_warmers[idx[0] * 3 + 1];
-            float value = input_warmers[idx[0] * 3 + 2];
+    for (int i = 0; i < warmers_count; i++) {
+        int x = warmers[i * 3];
+        int y = warmers[i * 3 + 1];
+        float value = warmers[i * 3 + 2];
 
-            const auto out_idx(index<2>(y, x);
-
-            output.set(out_idx, value);
-        }
-    );
+        temp_board[y * (size + 2) + x] = value;
+    }
 
     delete[] board;
 
@@ -233,7 +225,7 @@ int main()
         int size = sizes[i];
         float* life = new float[(size + 2) * (size + 2)];
         fill(life, life + (size + 2) * (size + 2), 0);
-        int max_warmer_count = size % 100;
+        int max_warmer_count = 100;
         int warmer_count = 0;
         float k = 0.3;
         float* warmers = new float[max_warmer_count * 3];
@@ -251,7 +243,7 @@ int main()
             }
         }
 
-        //times[0][i] = tr_1(life, size, warmers, warmer_count, k);
+        times[0][i] = tr_1(life, size, warmers, warmer_count, k);
         times[1][i] = tr2(life, size, warmers, warmer_count, k);
         times[2][i] = tr3(life, size, warmers, warmer_count, k);
         // times[3][i] = tr4(life, size);
